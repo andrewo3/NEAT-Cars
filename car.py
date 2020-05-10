@@ -1,14 +1,17 @@
 import pygame
-from math import sin, cos, tan, radians
+from math import sin, cos, radians,atan2, hypot, pi
 
 class Car(object):
     def __init__(self,pos,color,rotation=90,scale=1):
         self.pos=[]
         self.wheelRot=0
         self.speed=0
+        self.testRot=False
+        self.sensors=[]
         self.hardCoded=True
         self.rotation=rotation-90
         self.maxSteer=65
+        self.camRot=0
         if color==(1,0,0):
             self.color=(0,0,0)
         else:
@@ -23,8 +26,43 @@ class Car(object):
         self.rotSurf=pygame.transform.rotate(self.surface,self.rotation)
         self.rotSurf.set_colorkey((1,0,0))
         #self.centerCar()
-    def centerCar(self,camRot):
-        self.pos = [self.center[0] - (pygame.transform.rotate(self.origRot,self.rotation+camRot).get_size()[0])/2, self.center[1] - pygame.transform.rotate(self.origRot,self.rotation+camRot).get_size()[1]/2]
+    def scaleOffset(self,point,zoom_, offset_, dimensions,rotation=0):
+        rad = radians(rotation)
+        # print(rad)
+        noRot = [(point[z] + offset_[z] - dimensions[z] / 2) * zoom_ + dimensions[z] / 2 for z in
+                 range(len(point))]
+        noRot[0] -= dimensions[0] / 2
+        noRot[1] -= dimensions[1] / 2
+        noRot[1] = -noRot[1]
+        newPoint = [0, 0]
+        newPoint[0] = cos(atan2(noRot[1], noRot[0]) + rad) * hypot(noRot[0], noRot[1])
+        newPoint[1] = sin(atan2(noRot[1], noRot[0]) + rad) * hypot(noRot[0], noRot[1])
+        newPoint[0] += dimensions[0] / 2
+        newPoint[1] = -newPoint[1]
+        newPoint[1] += dimensions[1] / 2
+        return newPoint
+    def setSensors(self,num,trackSurf):
+        self.sensors=[]
+        for i in range(num):
+            currentPos=list(self.center)
+            distance=0
+            while trackSurf.get_at([int(round(x)) for x in currentPos])==(255,255,255):
+                currentPos[0]+=cos((2*pi)/num*i+radians(-self.rotation))
+                currentPos[1]+=sin((2*pi)/num*i+radians(-self.rotation))
+                distance+=1
+            self.sensors.append([distance,currentPos[::]])
+    def drawSensors(self,surface,scale,offset,camRot=0,print_=True):
+        for i in self.sensors:
+            pygame.draw.line(surface,(255,255,255),self.scaleOffset(self.center,scale,offset,surface.get_size(),camRot),self.scaleOffset(i[1],scale,offset,surface.get_size(),camRot))
+        if print_==True:
+            print([i[0] for i in self.sensors])
+    def drawPOV(self,surface,scale,offset,camRot=0,print_=True):
+        for i in self.sensors:
+            pygame.draw.circle(surface,(255,255,255),self.scaleOffset(i[1],scale,offset,surface.get_size(),camRot),1*scale)
+        if print_==True:
+            print([i[0] for i in self.sensors])
+    def centerCar(self,surface,offsetPoint):
+        self.pos = [offsetPoint[0] - surface.get_size()[0]/2, offsetPoint[1] - surface.get_size()[1]/2]
     def makeCarFrame(self,surface,scale,offset):
         self.dimensions=[int(round(i*scale)) for i in self.origDim]
         self.alpha=pygame.Surface(self.dimensions)
@@ -56,17 +94,16 @@ class Car(object):
         self.addWindows()
         self.addWheels()
     def draw(self,surface,scale,offset,camRot=0):
+        self.camRot=camRot
         self.makeCarFrame(surface, scale, offset)
         self.rotSurf = pygame.Surface(pygame.transform.rotate(self.surface, self.rotation+camRot).get_size())
         self.rotSurf.set_colorkey((1, 0, 0))
         self.surface = pygame.Surface.convert(self.surface)
         self.rotSurf.blit(pygame.transform.rotate(self.surface, self.rotation+camRot), (0, 0))
         self.surface = pygame.Surface.convert(self.surface)
-        self.centerCar(camRot)
-        surface.blit(self.rotSurf,
-                     [(self.pos[i] + offset[i] - surface.get_size()[i] / 2) * scale + surface.get_size()[i] / 2 for i in
-                      range(len(self.pos))])
-    def update(self,keys):
+        self.centerCar(self.rotSurf,self.scaleOffset(self.center, scale, offset, surface.get_size(), camRot))
+        surface.blit(self.rotSurf,self.pos)
+    def update(self,keys,trackSurf,numSensors=8):
         if keys[pygame.K_w]:
             if self.speed<10:
                 self.speed+=0.3
@@ -77,15 +114,27 @@ class Car(object):
             self.speed=0
         if keys[pygame.K_a]:
             self.wheelRot=20
-            self.rotation+=3*self.speed/2
+            if self.testRot==False:
+                if self.speed<10:
+                    self.rotation+=self.speed
+                else:
+                    self.rotation+=10
+            else:
+                self.rotation+=10
         elif keys[pygame.K_d]:
             self.wheelRot=-20
-            self.rotation-=3*self.speed/2
+            if self.testRot==False:
+                if self.speed<10:
+                    self.rotation-=self.speed
+                else:
+                    self.rotation-=10
+            else:
+                self.rotation-=10
         else:
             self.wheelRot=0
         self.center[0]-=sin(radians(-(self.rotation+180)))*self.speed
         self.center[1]+=cos(radians(-(self.rotation+180)))*self.speed
-        None
+        self.setSensors(numSensors, trackSurf)
     def addHeadlights(self):
         pygame.draw.circle(self.surface, (255, 255, 0), (0, 0), int(round(self.dimensions[0] / 4)))
         pygame.draw.circle(self.surface, (255, 255, 0), (self.dimensions[0], 0), int(round(self.dimensions[0] / 4)))
@@ -140,3 +189,5 @@ class Car(object):
                                          int(round(self.dimensions[0] / 16)),
                                          int(round(self.dimensions[1] / 6))))
         self.surface.blit(oldSurface, (int(round(self.dimensions[0] / 16))+self.dimensions[1] / 6, 0))
+    def reset(self,pos,color,rotation=90,scale=1):
+        self.__init__(pos,color,rotation,scale)

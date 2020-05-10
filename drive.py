@@ -1,12 +1,12 @@
 import pygame, sys, pickle
-from math import e,log, atan2, sin, cos, pi, floor, radians
+from math import e,log, atan2, sin, cos, pi, radians, hypot
 from car import Car
 from random import randint
 
 dimensions=(640,360)
 WINDOW = pygame.display.set_mode(dimensions)
 pygame.display.set_caption("Drive car lol")
-road=4
+road=8
 roadFile=open('Roads/'+str(road)+'.road','rb')
 byteList=b''
 for i in roadFile.readlines():
@@ -26,15 +26,16 @@ def bezFirstDer(res,*pointlist):
 allBezierPoints=[bezierCurve(100,*i) for i in segments]
 lastMouse=False
 zoom=-log(7,e)
+#zoom=-6
 #zoom=2.054
-zoom=6
+#zoom=6
 #offset=[130,4]
 offset=[0,0]
 sigmoidScale=4
 derAng=[[atan2(x[0],x[1]) for x in bezFirstDer(100,*i)] for i in segments]
 edge1=[]
 edge2=[]
-followCar=True
+followCar=False
 cameraRotation=0
 trig={0:cos,1:lambda x: -sin(x)}
 for i in range(len(derAng)):
@@ -44,16 +45,18 @@ for i in range(len(derAng)):
 def scaleOffset(point,zoom_,offset_,rotation=0):
     global sigmoidScale,dimensions
     rad=radians(rotation)
-    print(rad)
+    #print(rad)
     noRot=[(point[z]+offset_[z]-dimensions[z]/2)*sigmoid(zoom_,sigmoidScale)+dimensions[z]/2 for z in range(len(point))]
-    '''noRot[0]-=dimensions[0]/2
+    noRot[0]-=dimensions[0]/2
     noRot[1]-=dimensions[1]/2
-    noRot[0]=noRot[0]*cos(rad)+noRot[1]*sin(rad)
-    noRot[1]=noRot[1]*cos(rad)-noRot[0]*sin(rad)
-    noRot[0]+=dimensions[0]/2
-    noRot[1]-=dimensions[1]/2
-    noRot[1]=-noRot[1]'''
-    return noRot
+    noRot[1]=-noRot[1]
+    newPoint=[0,0]
+    newPoint[0]=cos(atan2(noRot[1],noRot[0])+rad)*hypot(noRot[0],noRot[1])
+    newPoint[1]=sin(atan2(noRot[1],noRot[0])+rad)*hypot(noRot[0],noRot[1])
+    newPoint[0]+=dimensions[0]/2
+    newPoint[1]=-newPoint[1]
+    newPoint[1]+=dimensions[1]/2
+    return newPoint
 def onScreen(pos,leniance=0):
     global dimensions
     x=pos[0]
@@ -65,36 +68,50 @@ def onScreen(pos,leniance=0):
 #print(atan2(*(bezFirstDer(100,*([i for i in segments if i[0]==start])[0])[0][::-1]))/(pi)*180)
 redCar=Car(start,(255,0,0),rotation=atan2(*([bezFirstDer(100,*([i for i in segments if i[0]==start])[0])[0][x]*((-1)**x) for x in range(2)][::-1]))/(pi)*180,scale=trackDim[0]/640)
 #cars=[Car([start[0]+floor(i/10)*15,start[1]+i%10*30],[randint(0,255) for i in range(3)],scale=trackDim[0]/640) for i in range(100)]
+testRot=[dimensions[0]/2+dimensions[1]/2,dimensions[1]/2]
+trackSurf=pygame.Surface(dimensions)
+trackSurf.fill((0,0,0))
+for i in allBezierPoints:
+    for x in i:
+        pygame.draw.circle(trackSurf, (255,255,255), x, 20 * trackDim[0] / 640)
+#testRot=[dimensions[0]/2,0]
+limitFps=pygame.time.Clock()
 while True:
     rel=pygame.mouse.get_rel()
     if not(followCar):
         if pygame.mouse.get_pressed()[0]:
-            offset[0]-=rel[0]
-            offset[1]-=rel[1]
+            distance=hypot(rel[0],rel[1])
+            offset[0]-=cos(atan2(rel[1],rel[0])+radians(cameraRotation))*distance
+            offset[1]-=sin(atan2(rel[1],rel[0])+radians(cameraRotation))*distance
+        if pygame.mouse.get_pressed()[1]:
+            cameraRotation+=rel[0]
     else:
-        cameraRotation+=1
+        '''if pygame.mouse.get_pressed()[0]:
+            cameraRotation+=1'''
+        cameraRotation=-redCar.rotation
         #zoom=6
-        offset[0]=(offset[0]+(dimensions[0]/2-redCar.center[0]))/2
-        offset[1]=(offset[1]+(dimensions[1]/2-redCar.center[1]))/2
+        offset[0]=(dimensions[0]/2-redCar.center[0])
+        offset[1]=(dimensions[1]/2-redCar.center[1])
+        #offset[0]=(offset[0]+(dimensions[0]/2-redCar.center[0]))/2
+        #offset[1]=(offset[1]+(dimensions[1]/2-redCar.center[1]))/2
+    #draw track
     for i in allBezierPoints:
         for x in i:
             if onScreen(scaleOffset(x,zoom,offset,cameraRotation),20*trackDim[0]/640*sigmoid(zoom,sigmoidScale)):
                 pygame.draw.circle(WINDOW,(128,128,128),scaleOffset(x,zoom,offset,cameraRotation),20*trackDim[0]/640*sigmoid(zoom,sigmoidScale))
-    pygame.draw.lines(WINDOW,(255,255,255),False,[scaleOffset(i,zoom,offset,cameraRotation) for i in edge1],int(round(1*sigmoid(zoom,sigmoidScale))))
-    pygame.draw.lines(WINDOW, (255,255,255),False,[scaleOffset(i, zoom, offset,cameraRotation) for i in edge2],int(round(1*sigmoid(zoom,sigmoidScale))))
     #pygame.draw.circle(WINDOW,(255,255,0),[(start[i]+offset[i]-dimensions[i]/2)*sigmoid(zoom,sigmoidScale)+dimensions[i]/2 for i in range(len(start))],10*trackDim[0]/640*sigmoid(zoom,sigmoidScale))
-    redCar.update(pygame.key.get_pressed())
+    redCar.update(pygame.key.get_pressed(),trackSurf,8)
+    if trackSurf.get_at([int(round(i)) for i in redCar.center])!=(255,255,255):
+        redCar.reset(start,(255,0,0),rotation=atan2(*([bezFirstDer(100,*([i for i in segments if i[0]==start])[0])[0][x]*((-1)**x) for x in range(2)][::-1]))/(pi)*180,scale=trackDim[0]/640)
+    redCar.drawPOV(WINDOW, sigmoid(zoom, sigmoidScale), offset, cameraRotation)
     if onScreen(scaleOffset(redCar.center,zoom,offset,cameraRotation),20):
-        redCar.draw(WINDOW,sigmoid(zoom,sigmoidScale),offset,cameraRotation)
+        redCar.draw(WINDOW, sigmoid(zoom, sigmoidScale), offset, cameraRotation)
     '''for i in cars:
         i.update()
         if onScreen(i.pos,20):
             i.draw(WINDOW,sigmoid(zoom,sigmoidScale),offset)'''
-    '''rotation=pygame.display.get_surface()
-    rotation=pygame.transform.rotate(rotation,cameraRotation)
-    WINDOW.fill((0,0,0))
-    WINDOW.blit(rotation,(-(rotation.get_size()[0]-dimensions[0])/2,-(rotation.get_size()[1]-dimensions[1])/2))'''
     pygame.display.update()
+    limitFps.tick(30)
     WINDOW.fill((0,255,0))
     for event in pygame.event.get():
         if event.type==pygame.QUIT:
@@ -106,3 +123,9 @@ while True:
                 zoom=-6
             elif zoom>6:
                 zoom=6
+        if event.type==pygame.KEYDOWN:
+            if event.key==pygame.K_c:
+                if followCar:
+                    followCar=False
+                else:
+                    followCar=True

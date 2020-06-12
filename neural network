@@ -1,0 +1,6 @@
+Inputs: car sensors
+outputs: w, a, s, d
+activation function: tanh (>0.5 - press button, <0.5 - don't press button)
+population size - 1000? 100? idk
+fitness function - forward distance travelled (addition of movement every frame) (>distance, >fitness)
+max generations - idk i dont really want a max generation

@@ -6,6 +6,7 @@ class Car(object):
         self.pos=[]
         self.wheelRot=0
         self.speed=0
+        self.framesStill=0
         self.testRot=False
         self.sensors=[]
         self.hardCoded=True
@@ -25,6 +26,7 @@ class Car(object):
         self.origRot=pygame.Surface([self.origDim[0]*9/8+self.origDim[1]/3,self.origDim[1]])
         self.rotSurf=pygame.transform.rotate(self.surface,self.rotation)
         self.rotSurf.set_colorkey((1,0,0))
+        self.noScaleSurface = self.surface.copy()
         #self.centerCar()
     def scaleOffset(self,point,zoom_, offset_, dimensions,rotation=0):
         rad = radians(rotation)
@@ -46,9 +48,17 @@ class Car(object):
         for i in range(num):
             currentPos=list(self.center)
             distance=0
-            while trackSurf.get_at([int(round(x)) for x in currentPos])==(255,255,255):
-                currentPos[0]+=cos((2*pi)/num*i+radians(-self.rotation))
-                currentPos[1]+=sin((2*pi)/num*i+radians(-self.rotation))
+            end=False
+            while not(end):
+                intPos=[int(round(x)) for x in currentPos]
+                if intPos[0]>0 and intPos[0]<trackSurf.get_width() and intPos[1]>0 and intPos[1]<trackSurf.get_height():
+                    if trackSurf.get_at(intPos)==(255,255,255):
+                        currentPos[0]+=cos((2*pi)/num*i+radians(-self.rotation))
+                        currentPos[1]+=sin((2*pi)/num*i+radians(-self.rotation))
+                    else:
+                        end=True
+                else:
+                    end=True
                 distance+=1
             self.sensors.append([distance,currentPos[::]])
     def drawSensors(self,surface,scale,offset,camRot=0,print_=True):
@@ -104,33 +114,33 @@ class Car(object):
         self.centerCar(self.rotSurf,self.scaleOffset(self.center, scale, offset, surface.get_size(), camRot))
         surface.blit(self.rotSurf,self.pos)
     def update(self,keys,trackSurf,numSensors=8):
-        if keys[pygame.K_w]:
+        if keys[0]:
             if self.speed<10:
                 self.speed+=0.3
-        elif keys[pygame.K_s]:
+        elif keys[1]:
             if self.speed>0:
                 self.speed-=0.6
         if self.speed<0:
             self.speed=0
-        if keys[pygame.K_a]:
+        if keys[2]:
             self.wheelRot=20
             if self.testRot==False:
                 if self.speed<10:
-                    self.rotation+=self.speed
+                    self.rotation+=self.speed*2
                 else:
-                    self.rotation+=10
+                    self.rotation+=20
             else:
-                self.rotation+=10
-        elif keys[pygame.K_d]:
+                self.rotation+=20
+        if keys[3]:
             self.wheelRot=-20
             if self.testRot==False:
                 if self.speed<10:
-                    self.rotation-=self.speed
+                    self.rotation-=self.speed*2
                 else:
-                    self.rotation-=10
+                    self.rotation-=20
             else:
-                self.rotation-=10
-        else:
+                self.rotation-=20
+        if not(keys[2]) and not(keys[3]):
             self.wheelRot=0
         self.center[0]-=sin(radians(-(self.rotation+180)))*self.speed
         self.center[1]+=cos(radians(-(self.rotation+180)))*self.speed
@@ -189,5 +199,5 @@ class Car(object):
                                          int(round(self.dimensions[0] / 16)),
                                          int(round(self.dimensions[1] / 6))))
         self.surface.blit(oldSurface, (int(round(self.dimensions[0] / 16))+self.dimensions[1] / 6, 0))
-    def reset(self,pos,color,rotation=90,scale=1):
-        self.__init__(pos,color,rotation,scale)
+    def reset(self,pos,rotation=90,scale=1):
+        self.__init__(pos,self.color,rotation,scale)
